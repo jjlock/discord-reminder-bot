@@ -26,15 +26,20 @@ class ReminderCogCheck():
 class ReminderCog(commands.Cog, name='Reminder'):
     reminders = defaultdict(list)
     MAX_REMINDERS = 4
+    MESSAGE_CHARACTER_LIMIT = 100
 
     def __init__(self, bot):
         self.bot = bot
     
     @commands.command(name='remind-me')
     @commands.check(ReminderCogCheck.max_reminders)
-    async def remind_me(self, ctx, time, text_channel: typing.Optional[StrictDiscordTextChannel], *, message=''):
+    async def remind_me(self, ctx, time, text_channel: typing.Optional[StrictDiscordTextChannel], *, message: commands.clean_content=''):
         # parse the time str before the reminder is stored in case an error is raised
         sleep_seconds, time_display = self.parse_time_str(time)
+
+        if len(message) > ReminderCog.MESSAGE_CHARACTER_LIMIT:
+            await ctx.send('Your reminder cannot be more than 100 characters')
+            return
         
         channel_id = None
         if text_channel is None:
@@ -73,14 +78,22 @@ class ReminderCog(commands.Cog, name='Reminder'):
 
     @commands.command(name='show-reminders')
     async def show_reminders(self, ctx):
-        pass
+        reminder_list = ReminderCog.reminders.get((ctx.guild.id, ctx.author.id))
+        if reminder_list is None:
+            await ctx.send('You have no reminders')
+        else:
+            display = '```python'
+            for reminder in reminder_list:
+                channel = self.bot.get_channel(reminder.channel_id)
+                display += f'\n"{reminder.message}"\n#ID: {reminder.id} | #Channel: #{channel.name}\n'
+            await ctx.send(display + '```')
 
     @commands.command(name='delete-reminder')
     async def delete_reminder(self, ctx):
         pass
 
     async def cog_check(self, ctx):
-        return ctx.channel.permissions_for(ctx.guild.me).send_messages
+        return ctx.guild is not None and ctx.channel.permissions_for(ctx.guild.me).send_messages
 
     async def sleep_reminder(self, guild_id, author_id, reminder_id, seconds):
         sleep_seconds = seconds
@@ -104,7 +117,7 @@ class ReminderCog(commands.Cog, name='Reminder'):
     def parse_time_str(self, time_str):
         match = re.match(r'^([1-3]w)?([1-6]d)?(([1-9]|1\d|2[0-3])h)?(([1-9]|[1-5]\d)m)?(([1-9]|[1-5]\d)s)?$', time_str)
         if match is None:
-            raise commands.BadArgument(f'{time_str} is not in the correct format for the time')
+            raise commands.BadArgument('The time is not in the correct format')
 
         conversions = {
             'w': ('weeks', 604800), # 1 week = 604800 seconds

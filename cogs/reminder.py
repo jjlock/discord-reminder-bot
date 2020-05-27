@@ -4,7 +4,7 @@ import typing
 from collections import defaultdict
 import discord
 from discord.ext import commands
-from .utils.utils import StrictDiscordTextChannel
+from .utils.converters import StrictDiscordTextChannel
 
 class Reminder():
     def __init__(self, guild_id, author_id, channel_id, message):
@@ -15,14 +15,6 @@ class Reminder():
         self.message = message
         self.task = None
 
-class ReminderCogCheck():
-    @staticmethod
-    async def max_reminders(ctx):
-        reminder_list = ReminderCog.reminders.get((ctx.guild.id, ctx.author.id))
-        if reminder_list is not None and len(reminder_list) == ReminderCog.MAX_REMINDERS:
-            raise commands.CheckFailure('max_reminders')
-        return True
-
 class ReminderCog(commands.Cog, name='Reminder'):
     reminders = defaultdict(list)
     MAX_REMINDERS = 4
@@ -30,12 +22,28 @@ class ReminderCog(commands.Cog, name='Reminder'):
 
     def __init__(self, bot):
         self.bot = bot
+
+    async def cog_check(self, ctx):
+        return ctx.guild is not None and ctx.channel.permissions_for(ctx.guild.me).send_messages
+
+    async def cog_command_error(self, ctx, error):
+        if isinstance(error, commands.BadArgument):
+            await ctx.send(error)
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send(f'You are missing one or more arguments for the {ctx.command.name} command')
+        elif isinstance(error, commands.TooManyArguments):
+            await ctx.send(f'You used the {ctx.command.name} command with too many arguments')
+        else:
+            raise error
     
     @commands.command(name='remind-me')
-    @commands.check(ReminderCogCheck.max_reminders)
-    async def remind_me(self, ctx, time, text_channel: typing.Optional[StrictDiscordTextChannel], *, message: commands.clean_content=''):
+    async def remind_me(self, ctx, time, text_channel: typing.Optional[StrictDiscordTextChannel], *, message: commands.clean_content(fix_channel_mentions=True)=''):
         # parse the time str before the reminder is stored in case an error is raised
         sleep_seconds, time_display = self.parse_time_str(time)
+
+        if self.has_max_reminders(ctx.guild.id, ctx.author.id):
+            await ctx.send(f'Reminder not set. You can only have {ReminderCog.MAX_REMINDERS} reminders at a time.')
+            return
 
         if len(message) > ReminderCog.MESSAGE_CHARACTER_LIMIT:
             await ctx.send('Your reminder cannot be more than 100 characters')
@@ -59,23 +67,6 @@ class ReminderCog(commands.Cog, name='Reminder'):
 
         print(ReminderCog.reminders)
 
-    @remind_me.error
-    async def remind_me_error(self, ctx, error):
-        if isinstance(error, commands.CheckFailure):
-            if len(error.args) == 0:
-                raise error
-            
-            if error.args[0] == 'max_reminders':
-                await ctx.send(f'Reminder not set. You can only have {ReminderCog.MAX_REMINDERS} reminders at a time.')
-            else:
-                raise error
-        elif isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send('Please specify a time for your reminder')
-        elif isinstance(error, commands.BadArgument):
-            await ctx.send(error)
-        else:
-            raise error
-
     @commands.command(name='show-reminders')
     async def show_reminders(self, ctx):
         reminder_list = ReminderCog.reminders.get((ctx.guild.id, ctx.author.id))
@@ -91,9 +82,6 @@ class ReminderCog(commands.Cog, name='Reminder'):
     @commands.command(name='delete-reminder')
     async def delete_reminder(self, ctx):
         pass
-
-    async def cog_check(self, ctx):
-        return ctx.guild is not None and ctx.channel.permissions_for(ctx.guild.me).send_messages
 
     async def sleep_reminder(self, guild_id, author_id, reminder_id, seconds):
         sleep_seconds = seconds
@@ -142,6 +130,10 @@ class ReminderCog(commands.Cog, name='Reminder'):
                 start += pos + 1
 
         return (total_seconds, ' '.join(time_display))
+
+    def has_max_reminders(self, guild_id, author_id):
+        reminder_list = ReminderCog.reminders.get((guild_id, author_id))
+        return reminder_list is not None and len(reminder_list) == ReminderCog.MAX_REMINDERS
 
 def setup(bot):
     bot.add_cog(ReminderCog(bot))

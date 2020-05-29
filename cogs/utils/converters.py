@@ -2,13 +2,12 @@ import re
 import discord
 from discord.ext import commands
 
-class StrictDiscordTextChannel(commands.Converter):
-    # checks if argument is a discord.TextChannel and if it is not then prevent argument from casting to discord.TextChannel
+class TextChannelMention(commands.Converter):
+    # checks if argument is a text channel mention and if it is not then prevent argument from casting to discord.TextChannel
     async def convert(self, ctx, argument):
         match = re.match(r'<#([0-9]+)>$', argument)
         if match is None:
-            # not a mention
-            raise commands.BadArgument(f'{argument} is not a TextChannel')
+            raise commands.BadArgument(f'{argument} is not a text channel mention')
         
         channel = ctx.guild.get_channel(int(match.group(1)))
         
@@ -16,3 +15,40 @@ class StrictDiscordTextChannel(commands.Converter):
             raise commands.BadArgument(f'Channel {argument} not found')
         
         return channel
+
+class Duration(commands.Converter):
+    def __init__(self, seconds=0, display=''):
+        self.seconds = seconds
+        self.display = display
+
+    @classmethod
+    async def convert(cls, ctx, argument):
+        match = re.fullmatch(r"""(?:(?P<weeks>\d)w)?                # ex: 5w
+                                 (?:(?P<days>[0-6])d)?              # ex: 3d
+                                 (?:(?P<hours>\d|1\d|2[0-3])h)?     # ex: 12h
+                                 (?:(?P<minutes>\d|[1-5]\d)m)?      # ex: 30m
+                                 (?:(?P<seconds>\d|[1-5]\d)s)?      # ex: 15s
+                              """, argument, re.VERBOSE)
+        
+        if match is None or not match.group(0):
+            raise commands.BadArgument('The duration for the reminder is not in the correct format or is not under 10 weeks')
+
+        conversions = [
+            ('weeks', 604800),  # 1 week = 604800 seconds
+            ('days', 86400),    # 1 day  = 86400 seconds
+            ('hours', 3600),    # 1 hour = 3600 seconds
+            ('minutes', 60), 
+            ('seconds', 1)
+        ]
+
+        total_seconds = 0
+        display_result = []
+        for interval, seconds in conversions:
+            num = match.group(interval)
+            if num and num != '0':
+                total_seconds += int(num) * seconds
+                if num == '1':
+                    interval = interval.rstrip('s')
+                display_result.append(f'{num} {interval}')
+
+        return cls(total_seconds, ' '.join(display_result))

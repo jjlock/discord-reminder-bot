@@ -1,10 +1,11 @@
 import asyncio
 import re
+import textwrap
 import typing
 from collections import defaultdict
 import discord
 from discord.ext import commands
-from .utils.converters import StrictDiscordTextChannel
+from .utils.converters import Duration, TextChannelMention
 
 class Reminder():
     def __init__(self, guild_id, author_id, channel_id, message):
@@ -37,33 +38,32 @@ class ReminderCog(commands.Cog, name='Reminder'):
             raise error
     
     @commands.command(name='remind-me')
-    async def remind_me(self, ctx, time, text_channel: typing.Optional[StrictDiscordTextChannel], *, message: commands.clean_content(fix_channel_mentions=True)=''):
-        # parse the time str before the reminder is stored in case an error is raised
-        sleep_seconds, time_display = self.parse_time_str(time)
-
+    async def remind_me(self, ctx, duration: Duration, send_to: typing.Optional[TextChannelMention], *, message: commands.clean_content(fix_channel_mentions=True)=''):
         if self.has_max_reminders(ctx.guild.id, ctx.author.id):
             await ctx.send(f'Reminder not set. You can only have {ReminderCog.MAX_REMINDERS} reminders at a time.')
             return
-
-        if len(message) > ReminderCog.MESSAGE_CHARACTER_LIMIT:
-            await ctx.send('Your reminder cannot be more than 100 characters')
-            return
         
-        channel_id = None
-        if text_channel is None:
-            channel_id = ctx.channel.id
-        elif not text_channel.permissions_for(ctx.guild.me).send_messages or not text_channel.permissions_for(ctx.author).view_channel:
-            await ctx.send('I cannot send a reminder to that channel')
-            return
+        channel = None
+        
+        if send_to is None:
+            channel = ctx.channel
         else:
-            channel_id = text_channel.id
+            if not send_to.permissions_for(ctx.guild.me).send_messages or not send_to.permissions_for(ctx.author).view_channel:
+                await ctx.send('I cannot send a reminder to that channel')
+                return
+            channel = send_to
+
+        if duration.seconds == 0:
+            await channel.send(f'<@{ctx.author.id}> {message}')
+            return
         
-        reminder = Reminder(ctx.guild.id, ctx.author.id, channel_id, message)
-        # guarantee that reminder is stored before creating the task for the reminder
+        reminder = Reminder(ctx.guild.id, ctx.author.id, channel.id, message)
+
+        # guarantee that the reminder is stored before creating the task for the reminder
         ReminderCog.reminders[(ctx.guild.id, ctx.author.id)].append(reminder)
-        reminder.task = self.bot.loop.create_task(self.sleep_reminder(ctx.guild.id, ctx.author.id, reminder.id, sleep_seconds))
+        reminder.task = self.bot.loop.create_task(self.send_reminder(ctx.guild.id, ctx.author.id, reminder.id, duration.seconds))
         
-        await ctx.send(f'Okay I will remind you at <#{channel_id}> in **{time_display}**!')
+        await ctx.send(f'Okay I will remind you at <#{channel.id}> in **{duration.display}**!')
 
         print(ReminderCog.reminders)
 
@@ -75,15 +75,16 @@ class ReminderCog(commands.Cog, name='Reminder'):
         else:
             display = '```python'
             for reminder in reminder_list:
+                shortened = textwrap.shorten(reminder.message, width=100)
                 channel = self.bot.get_channel(reminder.channel_id)
-                display += f'\n"{reminder.message}"\n#ID: {reminder.id} | #Channel: #{channel.name}\n'
+                display += f'\n"{shortened}"\n#ID: {reminder.id} | Channel: #{channel.name}\n'
             await ctx.send(display + '```')
 
     @commands.command(name='delete-reminder')
     async def delete_reminder(self, ctx):
         pass
 
-    async def sleep_reminder(self, guild_id, author_id, reminder_id, seconds):
+    async def send_reminder(self, guild_id, author_id, reminder_id, seconds):
         sleep_seconds = seconds
         while sleep_seconds > discord.utils.MAX_ASYNCIO_SECONDS:
             await asyncio.sleep(discord.utils.MAX_ASYNCIO_SECONDS)
@@ -101,35 +102,6 @@ class ReminderCog(commands.Cog, name='Reminder'):
         await channel.send(f'<@{pending_reminder.author_id}> {pending_reminder.message}')
 
         print(ReminderCog.reminders)
-
-    def parse_time_str(self, time_str):
-        match = re.match(r'^([1-3]w)?([1-6]d)?(([1-9]|1\d|2[0-3])h)?(([1-9]|[1-5]\d)m)?(([1-9]|[1-5]\d)s)?$', time_str)
-        if match is None:
-            raise commands.BadArgument('The time is not in the correct format')
-
-        conversions = {
-            'w': ('weeks', 604800), # 1 week = 604800 seconds
-            'd': ('days', 86400),   # 1 day  = 86400 seconds
-            'h': ('hours', 3600),   # 1 hour = 3600 seconds
-            'm': ('minutes', 60),
-            's': ('seconds', 1)
-        }
-
-        total_seconds = 0
-        time_display = []
-        start = 0
-        for pos in range(len(time_str)):
-            current = time_str[pos]
-            if not current.isdigit():
-                num = int(time_str[start:pos])
-                total_seconds += num * conversions[current][1]
-                period = conversions[current][0]
-                if num == 1:
-                    period = period.rstrip('s')
-                time_display.append(f'{num} {period}')
-                start += pos + 1
-
-        return (total_seconds, ' '.join(time_display))
 
     def has_max_reminders(self, guild_id, author_id):
         reminder_list = ReminderCog.reminders.get((guild_id, author_id))

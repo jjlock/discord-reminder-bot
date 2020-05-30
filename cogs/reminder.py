@@ -1,5 +1,4 @@
 import asyncio
-import re
 import textwrap
 import typing
 from collections import defaultdict
@@ -19,7 +18,6 @@ class Reminder():
 class ReminderCog(commands.Cog, name='Reminder'):
     reminders = defaultdict(list)
     MAX_REMINDERS = 4
-    MESSAGE_CHARACTER_LIMIT = 100
 
     def __init__(self, bot):
         self.bot = bot
@@ -70,36 +68,67 @@ class ReminderCog(commands.Cog, name='Reminder'):
     @commands.command(name='show-reminders')
     async def show_reminders(self, ctx):
         reminder_list = ReminderCog.reminders.get((ctx.guild.id, ctx.author.id))
-        if reminder_list is None:
+        if not reminder_list:
             await ctx.send('You have no reminders')
         else:
             display = '```python'
             for reminder in reminder_list:
                 shortened = textwrap.shorten(reminder.message, width=100)
-                channel = self.bot.get_channel(reminder.channel_id)
+                channel = ctx.guild.get_channel(reminder.channel_id)
                 display += f'\n"{shortened}"\n#ID: {reminder.id} | Channel: #{channel.name}\n'
             await ctx.send(display + '```')
 
     @commands.command(name='delete-reminder')
-    async def delete_reminder(self, ctx):
-        pass
+    async def delete_reminder(self, ctx, id: int):
+        reminder_list = ReminderCog.reminders.get((ctx.guild.id, ctx.author.id))
+        
+        if not reminder_list:
+            await ctx.send('You have no reminders')
+            return
+
+        found = False
+        for i in range(len(reminder_list)):
+            if reminder_list[i].id == id:
+                reminder = reminder_list.pop(i)
+                reminder.task.cancel()
+                found = True
+                break
+        
+        if not found:
+            await ctx.send('I could not find a reminder with that ID')
+            return
+        
+        await ctx.send('Reminder deleted')
+
+    @commands.command(name='clear-reminders')
+    async def clear_reminders(self, ctx):
+        reminder_list = ReminderCog.reminders.get((ctx.guild.id, ctx.author.id))
+
+        if not reminder_list:
+            await ctx.send('You have no reminders')
+            return
+        
+        for reminder in reminder_list:
+            reminder.task.cancel()
+       
+        reminder_list.clear()
+        await ctx.send('All your reminders are deleted')
 
     async def send_reminder(self, guild_id, author_id, reminder_id, seconds):
-        sleep_seconds = seconds
-        while sleep_seconds > discord.utils.MAX_ASYNCIO_SECONDS:
+        while seconds > discord.utils.MAX_ASYNCIO_SECONDS:
             await asyncio.sleep(discord.utils.MAX_ASYNCIO_SECONDS)
-            sleep_seconds -= discord.utils.MAX_ASYNCIO_SECONDS
-        await asyncio.sleep(sleep_seconds)
+            seconds -= discord.utils.MAX_ASYNCIO_SECONDS
+        await asyncio.sleep(seconds)
 
         reminder_list = ReminderCog.reminders[(guild_id, author_id)]
-        pending_reminder = None
-        for reminder in range(len(reminder_list)):
-            if reminder_list[reminder].id == reminder_id:
-                pending_reminder = reminder_list.pop(reminder)
+        reminder = None
+        for i in range(len(reminder_list)):
+            if reminder_list[i].id == reminder_id:
+                reminder = reminder_list.pop(i)
                 break
 
-        channel = self.bot.get_channel(pending_reminder.channel_id)
-        await channel.send(f'<@{pending_reminder.author_id}> {pending_reminder.message}')
+        channel = self.bot.get_channel(reminder.channel_id)
+        await channel.send(f'<@{reminder.author_id}> {reminder.message}')
 
         print(ReminderCog.reminders)
 

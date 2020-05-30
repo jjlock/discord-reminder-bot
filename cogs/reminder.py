@@ -79,19 +79,13 @@ class ReminderCog(commands.Cog, name='Reminder'):
 
     @commands.command(name='delete', aliases=['delete-reminder'])
     async def delete_reminder(self, ctx, id: int):
-        reminder_list = ReminderCog.reminders.get((ctx.guild.id, ctx.author.id))
-        
-        if not reminder_list:
-            await ctx.send('You have no reminders')
-            return
-
-        index = next((i for i, reminder in enumerate(reminder_list) if reminder.id == id), None)
+        index = self.reminder_index(ctx.guild.id, ctx.author.id, id)
         
         if index is None:
             await ctx.send('I could not find a reminder with that ID')
             return
 
-        reminder = reminder_list.pop(index)
+        reminder = ReminderCog.reminders[(ctx.guild.id, ctx.author.id)].pop(index)
         reminder.task.cancel()
         await ctx.send('Reminder deleted')
 
@@ -100,7 +94,7 @@ class ReminderCog(commands.Cog, name='Reminder'):
         reminder_list = ReminderCog.reminders.get((ctx.guild.id, ctx.author.id))
 
         if not reminder_list:
-            await ctx.send('You have no reminders')
+            await ctx.send('You have no reminders to delete')
             return
         
         for reminder in reminder_list:
@@ -112,19 +106,48 @@ class ReminderCog(commands.Cog, name='Reminder'):
     @commands.group(name='edit', aliases=['edit-reminder'])
     async def edit_reminder(self, ctx):
         if ctx.invoked_subcommand is None:
-            await ctx.send(f'{ctx.subcommand_passed} is not a subcommand of edit')
+            await ctx.send(f'{ctx.subcommand_passed} is not a subcommand of the {ctx.command.name} command')
 
     @edit_reminder.command(name='time', aliases=['duration'])
-    async def edit_reminder_time(self, ctx, duration: Duration):
-        pass
+    async def edit_reminder_time(self, ctx, id: int, duration: Duration):
+        index = self.reminder_index(ctx.guild.id, ctx.author.id, id)
+
+        if index is None:
+            await ctx.send('I could not find a reminder with that ID')
+            return
+
+        reminder = ReminderCog.reminders[(ctx.guild.id, ctx.author.id)][index]
+        reminder.task.cancel()
+        reminder.task = self.bot.loop.create_task(self.send_reminder(ctx.guild.id, ctx.author.id, reminder.id, duration.seconds))
+        await ctx.send(f'Okay I will now remind you in **{duration.display}**')
 
     @edit_reminder.command(name='channel', aliases=['dest', 'destination'])
-    async def edit_reminder_channel(self, ctx, channel: discord.TextChannel):
-        pass
+    async def edit_reminder_channel(self, ctx, id: int, channel: discord.TextChannel):
+        index = self.reminder_index(ctx.guild.id, ctx.author.id, id)
+
+        if index is None:
+            await ctx.send('I could not find a reminder with that ID')
+            return
+
+        if not channel.permissions_for(ctx.guild.me).send_messages or not channel.permissions_for(ctx.author).view_channel:
+                await ctx.send('I cannot send a reminder to that channel')
+                return
+
+        reminder = ReminderCog.reminders[(ctx.guild.id, ctx.author.id)][index]
+        reminder.channel_id = channel.id
+        await ctx.send(f'Okay I will now remind you at <#{reminder.channel_id}>')
 
     @edit_reminder.command(name='message', aliases=['msg'])
-    async def edit_reminder_message(self, ctx, *, message):
-        pass
+    async def edit_reminder_message(self, ctx, id: int, *, message):
+        index = self.reminder_index(ctx.guild.id, ctx.author.id, id)
+
+        if index is None:
+            await ctx.send('I could not find a reminder with that ID')
+            return
+
+        reminder = ReminderCog.reminders[(ctx.guild.id, ctx.author.id)][index]
+        reminder.message = message
+        await ctx.send("Okay I changed your reminder's message")
 
     async def send_reminder(self, guild_id, author_id, reminder_id, seconds):
         while seconds > discord.utils.MAX_ASYNCIO_SECONDS:
@@ -132,13 +155,8 @@ class ReminderCog(commands.Cog, name='Reminder'):
             seconds -= discord.utils.MAX_ASYNCIO_SECONDS
         await asyncio.sleep(seconds)
 
-        reminder_list = ReminderCog.reminders[(guild_id, author_id)]
-        reminder = None
-        for i in range(len(reminder_list)):
-            if reminder_list[i].id == reminder_id:
-                reminder = reminder_list.pop(i)
-                break
-
+        index = self.reminder_index(guild_id, author_id, reminder_id)
+        reminder = ReminderCog.reminders[(guild_id, author_id)].pop(index)
         channel = self.bot.get_channel(reminder.channel_id)
         await channel.send(f'<@{reminder.author_id}> {reminder.message}')
 
@@ -147,6 +165,16 @@ class ReminderCog(commands.Cog, name='Reminder'):
     def has_max_reminders(self, guild_id, author_id):
         reminder_list = ReminderCog.reminders.get((guild_id, author_id))
         return reminder_list is not None and len(reminder_list) == ReminderCog.MAX_REMINDERS
+
+    def reminder_index(self, guild_id, author_id, reminder_id):
+        reminder_list = ReminderCog.reminders.get((guild_id, author_id))
+        
+        if not reminder_list:
+            return None
+        
+        index = next((i for i, reminder in enumerate(reminder_list) if reminder.id == reminder_id), None)
+        
+        return index
 
 def setup(bot):
     bot.add_cog(ReminderCog(bot))

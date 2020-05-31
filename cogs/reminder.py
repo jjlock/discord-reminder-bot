@@ -7,10 +7,12 @@ from discord.ext import commands
 from .utils.converters import Duration, TextChannelMention
 
 class Reminder():
-    def __init__(self, guild_id, author_id, channel_id, message):
+    def __init__(self, author_id, channel_id, created, expires, message):
         self.id = id(self)
         self.author_id = author_id
         self.channel_id = channel_id
+        self.created = created
+        self.expires = expires
         self.message = message
         self.task = None
 
@@ -54,13 +56,13 @@ class ReminderCog(commands.Cog, name='Reminder'):
             await channel.send(f'<@{ctx.author.id}> {message}')
             return
         
-        reminder = Reminder(ctx.guild.id, ctx.author.id, channel.id, message)
+        reminder = Reminder(ctx.author.id, channel.id, ctx.message.created_at, duration.end, message)
 
         # guarantee that the reminder is stored before creating the task for the reminder
         ReminderCog.reminders[(ctx.guild.id, ctx.author.id)].append(reminder)
         reminder.task = self.bot.loop.create_task(self.send_reminder(ctx.guild.id, ctx.author.id, reminder.id, duration.seconds))
         
-        await ctx.send(f'Okay I will remind you at <#{channel.id}> in **{duration.display}**!')
+        await ctx.send(f'Okay I will remind you at <#{channel.id}> in **{Duration.display(duration.seconds)}**!')
 
         print(ReminderCog.reminders)
 

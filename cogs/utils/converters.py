@@ -1,3 +1,4 @@
+import datetime
 import re
 import discord
 from discord.ext import commands
@@ -17,9 +18,9 @@ class TextChannelMention(commands.Converter):
         return channel
 
 class Duration(commands.Converter):
-    def __init__(self, seconds=0, display=''):
+    def __init__(self, seconds=0, end=datetime.datetime.utcnow()):
         self.seconds = seconds
-        self.display = display
+        self.end = end
 
     @classmethod
     async def convert(cls, ctx, argument):
@@ -33,22 +34,30 @@ class Duration(commands.Converter):
         if match is None or not match.group(0):
             raise commands.BadArgument('The duration for the reminder is not in the correct format or is not under 10 weeks')
 
-        conversions = [
+        data = { interval: int(num) for interval, num in match.groupdict(default=0).items() }
+        delta = datetime.timedelta(**data)
+        seconds = int(delta.total_seconds())
+        end = ctx.message.created_at + delta
+        
+        return cls(seconds, end)
+
+    @staticmethod
+    def display(seconds):
+        conversions = (
             ('weeks', 604800),  # 1 week = 604800 seconds
             ('days', 86400),    # 1 day  = 86400 seconds
             ('hours', 3600),    # 1 hour = 3600 seconds
             ('minutes', 60), 
             ('seconds', 1)
-        ]
+        )
 
-        total_seconds = 0
-        display_result = []
-        for interval, seconds in conversions:
-            num = match.group(interval)
-            if num and num != '0':
-                total_seconds += int(num) * seconds
-                if num == '1':
+        result = []
+        for interval, value in conversions:
+            num = seconds // value
+            if num:
+                seconds -=  num * value
+                if num == 1:
                     interval = interval.rstrip('s')
-                display_result.append(f'{num} {interval}')
+                result.append(f'{num} {interval}')
 
-        return cls(total_seconds, ' '.join(display_result))
+        return ' '.join(result)

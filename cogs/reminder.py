@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import textwrap
 import typing
 from collections import defaultdict
@@ -77,8 +78,8 @@ class ReminderCog(commands.Cog, name='Reminder'):
         for reminder in sorted(reminder_dict.values(), key=lambda reminder: reminder.created):
             shortened = textwrap.shorten(reminder.message, width=100)
             channel = ctx.guild.get_channel(reminder.channel_id)
-            display += f'\n"{shortened}"\n#ID: {reminder.id} | Channel: #{channel.name}\n'
-            # display += f'\n#ID: {reminder.id} | Channel: #{channel.name}\n"{shortened}"\n'
+            remaining = int((reminder.expires - datetime.datetime.utcnow()).total_seconds())
+            display += f'\n"{shortened}"\n#ID: {reminder.id} | Channel: #{channel.name} | In: {Duration.display(remaining, granularity=2)}\n'
         await ctx.send(display + '```')
 
     @commands.command(name='delete', aliases=['delete-reminder'])
@@ -117,6 +118,7 @@ class ReminderCog(commands.Cog, name='Reminder'):
             return
         
         reminder.task.cancel()
+        reminder.expires = duration.end
         reminder.task = self.bot.loop.create_task(self.send_reminder(ctx.guild.id, ctx.author.id, reminder.id, duration.seconds))
         await ctx.send(f'Okay I will now remind you in **{Duration.display(duration.seconds)}**')
 

@@ -42,7 +42,7 @@ class Duration(commands.Converter):
         return cls(seconds, end)
 
     @staticmethod
-    def display(seconds):
+    def display(seconds, granularity=5):
         conversions = (
             ('weeks', 604800),  # 1 week = 604800 seconds
             ('days', 86400),    # 1 day  = 86400 seconds
@@ -60,4 +60,4 @@ class Duration(commands.Converter):
                     interval = interval.rstrip('s')
                 result.append(f'{num} {interval}')
 
-        return ' '.join(result)
+        return ' '.join(result[:granularity])

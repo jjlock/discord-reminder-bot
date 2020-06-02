@@ -4,8 +4,10 @@ import discord
 from discord.ext import commands
 
 class TextChannelMention(commands.Converter):
-    # checks if argument is a text channel mention and if it is not then prevent argument from casting to discord.TextChannel
+    """A converter for checking if an argument is a text channel mention."""
+    
     async def convert(self, ctx, argument):
+        """Checks whether the argument is a text channel mention."""
         match = re.match(r'<#([0-9]+)>$', argument)
         if match is None:
             raise commands.BadArgument(f'{argument} is not a text channel mention')
@@ -18,12 +20,21 @@ class TextChannelMention(commands.Converter):
         return channel
 
 class Duration(commands.Converter):
+    """Represents a duration of time in seconds and the datetime when the duration ends."""
+    
     def __init__(self, seconds=0, end=datetime.datetime.utcnow()):
         self.seconds = seconds
         self.end = end
 
     @classmethod
     async def convert(cls, ctx, argument):
+        """
+        Converts the argument into a Duration object.
+
+        The argument can be specified in weeks, days, hours, minutes, and/or seconds.
+
+        Durations can only be under 10 weeks.
+        """
         match = re.fullmatch(r"""(?:(?P<weeks>\d)w)?                # ex: 5w
                                  (?:(?P<days>[0-6])d)?              # ex: 3d
                                  (?:(?P<hours>\d|1\d|2[0-3])h)?     # ex: 12h
@@ -43,6 +54,13 @@ class Duration(commands.Converter):
 
     @staticmethod
     def display(seconds, granularity=5):
+        """
+        Displays the number of seconds in weeks, days, hours, minutes, and seconds.
+        
+        Examples:
+            5440 seconds -> "1 hour 30 minutes 40 seconds"
+            7201 seconds -> "2 hours 1 second"
+        """
         conversions = (
             ('weeks', 604800),  # 1 week = 604800 seconds
             ('days', 86400),    # 1 day  = 86400 seconds

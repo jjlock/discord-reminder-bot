@@ -13,8 +13,7 @@ class TextChannelMention(commands.Converter):
             raise commands.BadArgument(f'{argument} is not a text channel mention')
         
         channel = ctx.guild.get_channel(int(match.group(1)))
-        
-        if not isinstance(channel, discord.TextChannel):
+        if channel is None:
             raise commands.BadArgument(f'Channel {argument} not found')
         
         return channel
@@ -56,7 +55,6 @@ class Duration(commands.Converter):
     def display(seconds, granularity=5):
         """
         Displays the number of seconds in weeks, days, hours, minutes, and seconds.
-        
         Examples:
             5440 seconds -> "1 hour 30 minutes 40 seconds"
             7201 seconds -> "2 hours 1 second"

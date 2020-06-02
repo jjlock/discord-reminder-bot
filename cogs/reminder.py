@@ -66,9 +66,11 @@ class ReminderCog(commands.Cog, name='Reminder'):
         reminder = self.pop_reminder(guild_id, author_id, reminder_id)
         if reminder is not None:
             channel = self.bot.get_channel(reminder.channel_id)
-            await channel.send(f'<@{reminder.author_id}> {reminder.message}')
-
-        print(ReminderCog.reminders)
+            if channel is not None:
+                try:
+                    await channel.send(f'<@{reminder.author_id}> {reminder.message}')
+                except discord.HTTPException:
+                    return
     
     @commands.command(aliases=['remind', 'remind-me'])
     async def reminder(self, ctx, duration: Duration, send_to: typing.Optional[TextChannelMention], *, message: commands.clean_content(fix_channel_mentions=True)=''):
@@ -104,7 +106,10 @@ class ReminderCog(commands.Cog, name='Reminder'):
 
         # if the duration is equal to 0 seconds then send the message immediately
         if duration.seconds == 0:
-            await channel.send(f'<@{ctx.author.id}> {message}')
+            try:
+                await channel.send(f'<@{ctx.author.id}> {message}')
+            except discord.HTTPException:
+                return
             return
         
         reminder = Reminder(ctx.author.id, channel.id, ctx.message.created_at, duration.end, message)
@@ -114,8 +119,6 @@ class ReminderCog(commands.Cog, name='Reminder'):
         reminder.task = self.bot.loop.create_task(self.send_reminder(ctx.guild.id, ctx.author.id, reminder.id, duration.seconds))
         
         await ctx.send(f'Okay I will remind you at <#{channel.id}> in **{Duration.display(duration.seconds)}**!')
-
-        print(ReminderCog.reminders)
 
     @commands.command(name='list', aliases=['list-reminders'])
     async def list_reminders(self, ctx):
@@ -127,10 +130,12 @@ class ReminderCog(commands.Cog, name='Reminder'):
         
         display = '```python'
         for reminder in sorted(reminder_dict.values(), key=lambda reminder: reminder.created):
-            shortened = textwrap.shorten(reminder.message, width=100)
             channel = ctx.guild.get_channel(reminder.channel_id)
+            channel_name = f'#{channel.name}' if channel is not None else '[deleted]'
+            shortened = textwrap.shorten(reminder.message, width=100)
             remaining = int((reminder.expires - datetime.datetime.utcnow()).total_seconds())
-            display += f'\n"{shortened}"\n#ID: {reminder.id} | Channel: #{channel.name} | In: {Duration.display(remaining, granularity=2)}\n'
+            display += f'\n"{shortened}"\n#ID: {reminder.id} | Channel: {channel_name} | In: {Duration.display(remaining, granularity=2)}\n'
+        
         await ctx.send(display + '```')
 
     @commands.command(name='delete', aliases=['delete-reminder'])

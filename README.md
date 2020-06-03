@@ -8,7 +8,8 @@ Example: `.help`
 ## Command Syntax
 `[]` - optional parameter  
 `<>` - required paramater  
-Note: some commands take no parameters
+  
+Note: Some commands take no parameters
 
 ## Commands
 `.reminder <duration> [channel] [message]` - **Creates a reminder**  

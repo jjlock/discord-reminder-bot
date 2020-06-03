@@ -77,8 +77,8 @@ class ReminderCog(commands.Cog, name='Reminder'):
         """
         Creates a reminder
 
-        duration: When the reminder should be sent from now in weeks, days, hours, minutes, and/or seconds.
-        The duration must be under 10 weeks.
+        duration: When the reminder should be sent from now in weeks, days, hours, minutes, and/or 
+        seconds. The duration must be under 10 weeks.
         Examples:
             1d = 1 day
             6h50s = 6 hours 50 seconds
@@ -210,7 +210,7 @@ class ReminderCog(commands.Cog, name='Reminder'):
         await ctx.send(f'Okay I will now remind you at <#{reminder.channel_id}>')
 
     @edit_reminder.command(name='message', aliases=['msg'])
-    async def edit_reminder_message(self, ctx, id: int, *, message):
+    async def edit_reminder_message(self, ctx, id: int, *, message=''):
         """Edits the message of a reminder with the given ID"""
         reminder = self.get_reminder(ctx.guild.id, ctx.author.id, id)
         if reminder is None:

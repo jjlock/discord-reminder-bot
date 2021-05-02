@@ -73,56 +73,44 @@ class ReminderCog(commands.Cog, name='Reminder'):
                     return
     
     @commands.command(aliases=['remind', 'remind-me'])
-    async def reminder(self, ctx, duration: Duration, send_to: typing.Optional[TextChannelMention], *, message: commands.clean_content(fix_channel_mentions=True)=''):
+    async def reminder(self, ctx, duration: Duration, channel: typing.Optional[TextChannelMention], *, message: commands.clean_content(fix_channel_mentions=True)=''):
         """
-        Creates a reminder
-
-        duration: When the reminder should be sent from now in weeks, days, hours, minutes, and/or 
-        seconds. The duration must be under 10 weeks.
-        Examples:
-            1d = 1 day
-            6h50s = 6 hours 50 seconds
-            5w3d12h30m30s = 5 weeks 3 days 12 hours 30 minutes 30 seconds
-
-        send_to: The channel to send the reminder to. If not specified, then the reminder will be sent to 
-        the channel the command was sent from. If specified, it must be given as a text channel mention.
-        
-        message: The message for the reminder. Mentions will be sent as their scrubbed versions.
-
-        You can only have up to 4 reminders at a time.
+        Creates a reminder.
+        Your message will be sent in the channel you are in or in the channel provided. You can only have up to 4 reminders at a time.
+        Example durations: 30s, 2m10s, 1h30m, 1d
         """
         if self.has_max_reminders(ctx.guild.id, ctx.author.id):
             await ctx.send(f'Reminder not set. You can only have {ReminderCog.MAX_REMINDERS} reminders at a time.')
             return
         
-        channel = None
-        if send_to is None:
-            channel = ctx.channel
+        send_to = None
+        if channel is None:
+            send_to = ctx.channel
         else:
-            if not send_to.permissions_for(ctx.guild.me).send_messages or not send_to.permissions_for(ctx.author).view_channel:
+            if not channel.permissions_for(ctx.guild.me).send_messages or not channel.permissions_for(ctx.author).view_channel:
                 await ctx.send('I cannot send a reminder to that channel')
                 return
-            channel = send_to
+            send_to = channel
 
         # if the duration is equal to 0 seconds then send the message immediately
         if duration.seconds == 0:
             try:
-                await channel.send(f'<@{ctx.author.id}> {message}')
+                await send_to.send(f'<@{ctx.author.id}> {message}')
             except discord.HTTPException:
                 return
             return
         
-        reminder = Reminder(ctx.author.id, channel.id, ctx.message.created_at, duration.end, message)
+        reminder = Reminder(ctx.author.id, send_to.id, ctx.message.created_at, duration.end, message)
 
         # the reminder should be stored before creating the task for the reminder
         ReminderCog.reminders[(ctx.guild.id, ctx.author.id)][reminder.id] = reminder
         reminder.task = self.bot.loop.create_task(self.send_reminder(ctx.guild.id, ctx.author.id, reminder.id, duration.seconds))
         
-        await ctx.send(f'Okay I will remind you at <#{channel.id}> in **{Duration.display(duration.seconds)}**!')
+        await ctx.send(f'Okay I will remind you at <#{send_to.id}> in **{Duration.display(duration.seconds)}**!')
 
-    @commands.command(name='list', aliases=['list-reminders'])
+    @commands.command(name='list')
     async def list_reminders(self, ctx):
-        """Lists all your current reminders"""
+        """Lists all your current reminders."""
         reminder_dict = ReminderCog.reminders.get((ctx.guild.id, ctx.author.id))
         if not reminder_dict:
             await ctx.send('You have no reminders')
@@ -138,14 +126,11 @@ class ReminderCog(commands.Cog, name='Reminder'):
         
         await ctx.send(display + '```')
 
-    @commands.command(name='delete', aliases=['delete-reminder'])
+    @commands.command(name='delete')
     async def delete_reminder(self, ctx, id: int):
         """
-        Deletes a reminder with the given ID
-        
-        The ID can be found using the list command
-
-        You can only delete your own reminders
+        Deletes a reminder with the given ID.
+        The ID can be found using the list command.
         """
         reminder = self.pop_reminder(ctx.guild.id, ctx.author.id, id)
         if reminder is None:
@@ -155,9 +140,9 @@ class ReminderCog(commands.Cog, name='Reminder'):
         reminder.task.cancel()
         await ctx.send('Reminder deleted')
 
-    @commands.command(name='clear', aliases=['clear-reminders'])
+    @commands.command(name='clear')
     async def clear_reminders(self, ctx):
-        """Deletes all your reminders"""
+        """Deletes all your reminders."""
         reminder_dict = ReminderCog.reminders.get((ctx.guild.id, ctx.author.id))
         if not reminder_dict:
             await ctx.send('You have no reminders to delete')
@@ -169,21 +154,18 @@ class ReminderCog(commands.Cog, name='Reminder'):
         reminder_dict.clear()
         await ctx.send('All your reminders are deleted')
 
-    @commands.group(name='edit', aliases=['edit-reminder'])
+    @commands.group(name='edit')
     async def edit_reminder(self, ctx):
         """
-        Commands for editing your reminders
-        
-        The ID can be found with the list command
-
-        You can only edit your own reminders
+        Commands for editing your reminders.
+        The ID can be found with the list command.
         """
         if ctx.invoked_subcommand is None:
             await ctx.send(f'{ctx.subcommand_passed} is not a subcommand of the {ctx.command.name} command')
 
     @edit_reminder.command(name='duration', aliases=['time'])
     async def edit_reminder_duration(self, ctx, id: int, duration: Duration):
-        """Edits the duration of a reminder with the given ID"""
+        """Edits the duration of a reminder with the given ID."""
         reminder = self.get_reminder(ctx.guild.id, ctx.author.id, id)
         if reminder is None:
             await ctx.send('I could not find a reminder with that ID')
@@ -196,7 +178,7 @@ class ReminderCog(commands.Cog, name='Reminder'):
 
     @edit_reminder.command(name='channel', aliases=['dest', 'destination'])
     async def edit_reminder_channel(self, ctx, id: int, channel: discord.TextChannel):
-        """Edits the channel the reminder with the given ID should be sent to"""
+        """Edits the channel the reminder with the given ID should be sent to."""
         reminder = self.get_reminder(ctx.guild.id, ctx.author.id, id)
         if reminder is None:
             await ctx.send('I could not find a reminder with that ID')
@@ -211,7 +193,7 @@ class ReminderCog(commands.Cog, name='Reminder'):
 
     @edit_reminder.command(name='message', aliases=['msg'])
     async def edit_reminder_message(self, ctx, id: int, *, message=''):
-        """Edits the message of a reminder with the given ID"""
+        """Edits the message of a reminder with the given ID."""
         reminder = self.get_reminder(ctx.guild.id, ctx.author.id, id)
         if reminder is None:
             await ctx.send('I could not find a reminder with that ID')

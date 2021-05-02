@@ -1,9 +1,10 @@
 import json
 import os
 import discord
+from dotenv import load_dotenv
 from discord.ext import commands
 
-bot = commands.Bot(command_prefix='.')
+bot = commands.Bot(command_prefix='!')
 
 @bot.event
 async def on_ready():
@@ -13,8 +14,6 @@ async def on_ready():
 bot.load_extension('cogs.reminder')
 
 # Configuration
-config_file = None
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json'), 'r') as file:
-    config_file = json.load(file)
+load_dotenv()
 
-bot.run(config_file['token'])
+bot.run(os.getenv('DISCORD_BOT_TOKEN'))
